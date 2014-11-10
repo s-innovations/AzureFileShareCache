@@ -58,15 +58,8 @@ namespace SInnovations.Azure.FileShareCache.Cache
             do
             {
                 
-                try
-                {
-                    path = await this.EnsureDownloadedAndReturnPathAsync(key, access.DownloadFileToCacheAsync, consistencyFail);
-                }
-                catch (Exception ex)
-                {
-                    Trace.TraceError(ex.ToString());
-                    throw;
-                }
+                path = await this.EnsureDownloadedAndReturnPathAsync(key, access.DownloadFileToCacheAsync, consistencyFail);
+
                 if (CalcMd5ForConsistancyChecks)
                 {
                     using (var md5 = MD5.Create())
@@ -102,7 +95,7 @@ namespace SInnovations.Azure.FileShareCache.Cache
             //Download File;
             using (await _downloadLocks.GetOrAdd(key, c => new AwaitableCriticalSection()).EnterAsync())
             {
-                if (File.Exists(path) && !File.Exists(lockPath))
+                if (!redownload && File.Exists(path) && !File.Exists(lockPath))
                 {
                     return path;
                 }
@@ -111,24 +104,36 @@ namespace SInnovations.Azure.FileShareCache.Cache
                 if(!Directory.Exists(dir))
                     Directory.CreateDirectory(dir);
 
-                File.WriteAllText(lockPath, DateTimeOffset.UtcNow.ToString());
-                try
+
+                int err = 3;
+                List<Exception> inners = new List<Exception>();
+                do
                 {
-                    await func(path);
-                }catch(Exception ex)
-                {
-                    if(File.Exists(path))
+                    File.WriteAllText(lockPath, DateTimeOffset.UtcNow.ToString());
+                    try
                     {
-                        File.Delete(path);
+                        await func(path);
+                        return path;
                     }
-                }
-                finally
-                {
-                    File.Delete(lockPath);
-                }
-                
+                    catch (Exception ex)
+                    {
+                        Trace.TraceError("Download Delegate failed. {0}", ex);
+                        if (File.Exists(path))
+                        {
+                            File.Delete(path);
+                        }
+                        inners.Add(ex);
+                        
+                    }
+                    finally
+                    {
+                        File.Delete(lockPath);
+                    }
+                } while (err --> 0);
                
-                return path;
+                throw new AggregateException("Failed to download file",inners);
+               
+               
             }
         }
 
