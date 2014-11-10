@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -27,6 +28,21 @@ namespace SInnovations.Azure.FileShareCache.Blobs
             return key;
         }
 
+        public async Task<bool> ConsistencyCheckAsync(string localPath,string md5)
+        {
+            var info = new FileInfo(localPath);
+
+            if (Target.Properties.ETag == null)
+                await Target.FetchAttributesAsync();
+
+            if (Target.Properties.Length != info.Length)
+                return false;
+
+            if (Target.Properties.ContentMD5 != md5)
+                return false;
+
+            return true;
+        }
 
         public T Target
         {

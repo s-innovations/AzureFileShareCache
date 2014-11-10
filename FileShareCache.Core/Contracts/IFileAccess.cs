@@ -13,5 +13,7 @@ namespace SInnovations.Azure.FileShareCache.Contracts
         Task DownloadFileToCacheAsync(string localPath);
 
         Task<string> GetKeyAsync();
+        Task<bool> ConsistencyCheckAsync(string localPath,string contentMd5);
+
     }
 }

@@ -7,8 +7,10 @@ using SInnovations.Azure.FileShareCache.Utils;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -45,14 +47,43 @@ namespace SInnovations.Azure.FileShareCache.Cache
         {
             var access = GetFileAccess<T>(target);
             var key = await access.GetKeyAsync();
-            return await this.EnsureDownloadedAndReturnPathAsync(key, access.DownloadFileToCacheAsync);
+            string path = null;
+            bool consistencyFail = false;
+            int i = 3;
+            do
+            {
+                
+                try
+                {
+                    path = await this.EnsureDownloadedAndReturnPathAsync(key, access.DownloadFileToCacheAsync, consistencyFail);
+                }
+                catch (Exception ex)
+                {
+                    Trace.TraceError(ex.ToString());
+                    throw;
+                }
 
+                using (var md5 = MD5.Create())
+                {
+                    using (var stream = File.OpenRead(path))
+                    {
+                        var contentMd5 = Convert.ToBase64String(md5.ComputeHash(stream));
+                        consistencyFail = !await access.ConsistencyCheckAsync(path, contentMd5);                       
+                    }
+                }
+
+            } while (consistencyFail && i-->0);
+
+            if (consistencyFail)
+                throw new Exception("Consistency check failed");
+
+            return path;
         }
 
-        private async Task<string> EnsureDownloadedAndReturnPathAsync(string key, Func<string, Task> func)
+        private async Task<string> EnsureDownloadedAndReturnPathAsync(string key, Func<string, Task> func, bool redownload=false)
         {
             var path = Path.Combine(_root, key); var lockPath = path+".lock";
-            if(File.Exists(path) && !File.Exists(lockPath))
+            if(!redownload && File.Exists(path) && !File.Exists(lockPath))
             {
                 return path;
             }
@@ -70,8 +101,22 @@ namespace SInnovations.Azure.FileShareCache.Cache
                     Directory.CreateDirectory(dir);
 
                 File.WriteAllText(lockPath, DateTimeOffset.UtcNow.ToString());
-                await func(path);
-                File.Delete(lockPath);
+                try
+                {
+                    await func(path);
+                }catch(Exception ex)
+                {
+                    if(File.Exists(path))
+                    {
+                        File.Delete(path);
+                    }
+                }
+                finally
+                {
+                    File.Delete(lockPath);
+                }
+                
+               
                 return path;
             }
         }
