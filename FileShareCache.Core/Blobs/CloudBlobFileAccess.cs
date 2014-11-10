@@ -2,6 +2,7 @@
 using SInnovations.Azure.FileShareCache.Contracts;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -36,9 +37,12 @@ namespace SInnovations.Azure.FileShareCache.Blobs
                 await Target.FetchAttributesAsync();
 
             if (Target.Properties.Length != info.Length)
-                return false;
+            {
+                Trace.TraceWarning("File {0} had a mismatch on file length.{1}!={2}", localPath, Target.Properties.Length, info.Length);
+                return false; 
+            }
 
-            if (Target.Properties.ContentMD5 != md5)
+            if (md5!=null && Target.Properties.ContentMD5 != md5)
                 return false;
 
             return true;

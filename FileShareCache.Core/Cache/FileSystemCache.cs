@@ -20,9 +20,12 @@ namespace SInnovations.Azure.FileShareCache.Cache
     public class FileSystemCache : IFileCache
     {
 
-        public static void RegisterDefaultAzureBlobs(IUnityContainer container,string root)
+        public static void RegisterDefaultAzureBlobs(IUnityContainer container,string root, bool calcMd5ForConsistancyChecks = true)
         {
-            container.RegisterInstance<IFileCache>(new FileSystemCache(container, root));
+            container.RegisterInstance<IFileCache>(new FileSystemCache(container, root)
+            {
+                 CalcMd5ForConsistancyChecks = calcMd5ForConsistancyChecks,
+            });
             container.RegisterType<IFileAccess<CloudBlockBlob>,CloudBlobFileAccess<CloudBlockBlob>>();
             container.RegisterType<IFileAccess<CloudPageBlob>,CloudBlobFileAccess<CloudPageBlob>>();
 
@@ -31,6 +34,8 @@ namespace SInnovations.Azure.FileShareCache.Cache
 
         private readonly IUnityContainer _container;
         private readonly string _root;
+
+        public bool CalcMd5ForConsistancyChecks { get; set; }
 
         public FileSystemCache(IUnityContainer container, string root)
         {
@@ -62,14 +67,20 @@ namespace SInnovations.Azure.FileShareCache.Cache
                     Trace.TraceError(ex.ToString());
                     throw;
                 }
-
-                using (var md5 = MD5.Create())
+                if (CalcMd5ForConsistancyChecks)
                 {
-                    using (var stream = File.OpenRead(path))
+                    using (var md5 = MD5.Create())
                     {
-                        var contentMd5 = Convert.ToBase64String(md5.ComputeHash(stream));
-                        consistencyFail = !await access.ConsistencyCheckAsync(path, contentMd5);                       
+                        using (var stream = File.OpenRead(path))
+                        {
+                            var contentMd5 = Convert.ToBase64String(md5.ComputeHash(stream));
+                            consistencyFail = !await access.ConsistencyCheckAsync(path, contentMd5);
+                        }
                     }
+                }
+                else
+                {
+                    consistencyFail = !await access.ConsistencyCheckAsync(path, null);
                 }
 
             } while (consistencyFail && i-->0);
