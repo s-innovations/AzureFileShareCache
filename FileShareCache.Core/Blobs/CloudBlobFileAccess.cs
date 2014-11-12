@@ -28,6 +28,10 @@ namespace SInnovations.Azure.FileShareCache.Blobs
 
             return key;
         }
+        public Task<string> GetFileNameAsync()
+        {
+            return Task.FromResult(Path.GetFileName(Target.Name));
+        }
 
         public async Task<bool> ConsistencyCheckAsync(string localPath,string md5)
         {

@@ -52,13 +52,16 @@ namespace SInnovations.Azure.FileShareCache.Cache
         {
             var access = GetFileAccess<T>(target);
             var key = await access.GetKeyAsync();
+            var filename = await access.GetFileNameAsync();
             string path = null;
             bool consistencyFail = false;
             int i = 3;
             do
             {
+                if (!Directory.Exists(Path.Combine(_root, key)))
+                    Directory.CreateDirectory(Path.Combine(_root, key));
                 
-                path = await this.EnsureDownloadedAndReturnPathAsync(key, access.DownloadFileToCacheAsync, consistencyFail);
+                path = await this.EnsureDownloadedAndReturnPathAsync(key,filename, access.DownloadFileToCacheAsync, consistencyFail);
 
                 if (CalcMd5ForConsistancyChecks)
                 {
@@ -84,9 +87,9 @@ namespace SInnovations.Azure.FileShareCache.Cache
             return path;
         }
 
-        private async Task<string> EnsureDownloadedAndReturnPathAsync(string key, Func<string, Task> func, bool redownload=false)
+        private async Task<string> EnsureDownloadedAndReturnPathAsync(string key, string filename, Func<string, Task> func, bool redownload=false)
         {
-            var path = Path.Combine(_root, key); var lockPath = path+".lock";
+            var path = Path.Combine(_root, key,filename); var lockPath = path+".lock";
             if(!redownload && File.Exists(path) && !File.Exists(lockPath))
             {
                 return path;
